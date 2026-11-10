@@ -1,0 +1,38 @@
+{
+  "name": "Meda Plus + | Live Sports & 24/7 Channels",
+  "short_name": "Meda Plus +",
+  "description": "Stream live sports, football fixtures, and 24/7 broadcast channels in HD.",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#07090E",
+  "theme_color": "#07090E",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["sports", "entertainment"],
+  "shortcuts": [
+    {
+      "name": "Live Matches",
+      "url": "/#live",
+      "description": "Quick view of matches live right now"
+    },
+    {
+      "name": "24/7 Channels",
+      "url": "/channels",
+      "description": "Watch non-stop sports TV channels"
+    }
+  ]
+}
