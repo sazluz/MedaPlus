@@ -1,15 +1,36 @@
 import { db } from "@/db";
 import { events, channels, matchRequests } from "@/db/schema";
 import { eq, desc } from "drizzle-orm";
-import { WatchMatchDetails } from "@/components/watch/WatchPlayerRoom";
 
-// Helper to extract team names from titles like "Arsenal vs Chelsea"
-function parseTeams(title: string) {
-  const parts = title.split(/\s+(?:vs\.?|v|-)\s+/i);
-  return {
-    homeTeam: parts[0]?.trim() || title,
-    awayTeam: parts[1]?.trim() || "Opponent",
-  };
+export interface StreamServer {
+  name: string;
+  url: string;
+  quality: string;
+}
+
+export interface EventData {
+  id: string;
+  type: string;
+  title: string;
+  tournament: string;
+  backdropUrl: string;
+  homeTeam?: string | null;
+  awayTeam?: string | null;
+  homeLogo?: string | null;
+  awayLogo?: string | null;
+  timeOrStatus: string;
+  isLive: boolean;
+  qualityBadge?: string | null;
+  servers: StreamServer[];
+}
+
+export interface ChannelData {
+  id: string;
+  name: string;
+  category: string;
+  logoUrl: string;
+  status: string;
+  servers: StreamServer[];
 }
 
 // 1. Fetch live and upcoming matches for the Home Page
@@ -21,7 +42,7 @@ export async function getLiveAndUpcomingEvents(): Promise<EventData[]> {
       .orderBy(desc(events.isLive), desc(events.timeOrStatus));
 
     return rawList.map((evt) => {
-      let parsedServers = [];
+      let parsedServers: StreamServer[] = [];
       try {
         parsedServers = JSON.parse(evt.servers || "[]");
       } catch {
@@ -51,7 +72,7 @@ export async function getLiveAndUpcomingEvents(): Promise<EventData[]> {
 }
 
 // 2. Fetch single event by ID with all server mirrors for the Watch Page
-export async function getEventById(id: string): Promise<WatchMatchDetails | null> {
+export async function getEventById(id: string): Promise<EventData | null> {
   try {
     const records = await db
       .select()
@@ -62,38 +83,37 @@ export async function getEventById(id: string): Promise<WatchMatchDetails | null
     const match = records[0];
     if (!match) return null;
 
-    const { homeTeam, awayTeam } = parseTeams(match.title);
+    let parsedServers: StreamServer[] = [];
+    try {
+      parsedServers = JSON.parse(match.servers || "[]");
+    } catch {
+      parsedServers = [];
+    }
 
-    const sources = [
-      {
-        name: "Server 1 (Primary)",
-        url: match.streamUrl,
-        type: match.streamUrl.includes(".m3u8") ? ("hls" as const) : ("embed" as const),
-        quality: "1080p 60fps",
-      },
-    ];
-
-    if (match.backupStreamUrl) {
-      sources.push({
-        name: "Server 2 (Backup)",
-        url: match.backupStreamUrl,
-        type: match.backupStreamUrl.includes(".m3u8") ? ("hls" as const) : ("embed" as const),
-        quality: "720p HD",
-      });
+    if (parsedServers.length === 0) {
+      parsedServers = [
+        {
+          name: "Main Server",
+          url: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
+          quality: match.qualityBadge || "1080P",
+        },
+      ];
     }
 
     return {
       id: match.id,
+      type: match.type || "team_match",
       title: match.title,
       tournament: match.tournament,
-      homeTeam,
-      awayTeam,
-      homeLogo: "https://media.api-sports.io/football/teams/42.png",
-      awayLogo: "https://media.api-sports.io/football/teams/50.png",
-      timeOrStatus: match.isLive ? "LIVE" : match.startTime,
+      backdropUrl: match.backdropUrl,
+      homeTeam: match.homeTeam,
+      awayTeam: match.awayTeam,
+      homeLogo: match.homeLogo,
+      awayLogo: match.awayLogo,
+      timeOrStatus: match.timeOrStatus,
       isLive: Boolean(match.isLive),
-      views: match.viewCount ?? 1240,
-      sources,
+      qualityBadge: match.qualityBadge || "1080P",
+      servers: parsedServers,
     };
   } catch (err) {
     console.error(`Failed to fetch event ${id} from Turso:`, err);
@@ -101,7 +121,7 @@ export async function getEventById(id: string): Promise<WatchMatchDetails | null
   }
 }
 
-// 3. Fetch active community requests for the modal
+// 3. Fetch active community requests
 export async function getPendingCommunityRequests() {
   try {
     return await db
@@ -116,21 +136,13 @@ export async function getPendingCommunityRequests() {
   }
 }
 
-export interface ChannelData {
-  id: string;
-  name: string;
-  category: string;
-  logoUrl: string;
-  status: string;
-  servers: { name: string; url: string; quality: string }[];
-}
-
+// 4. Fetch all 24/7 channels
 export async function getAllChannels(): Promise<ChannelData[]> {
   try {
     const rawChannels = await db.select().from(channels);
 
     return rawChannels.map((ch) => {
-      let parsedServers = [];
+      let parsedServers: StreamServer[] = [];
       try {
         parsedServers = JSON.parse(ch.servers || "[]");
       } catch {
@@ -152,13 +164,14 @@ export async function getAllChannels(): Promise<ChannelData[]> {
   }
 }
 
+// 5. Fetch single channel by ID
 export async function getChannelById(id: string): Promise<ChannelData | null> {
   try {
     const rows = await db.select().from(channels).where(eq(channels.id, id)).limit(1);
     if (!rows || rows.length === 0) return null;
 
     const ch = rows[0];
-    let parsedServers = [];
+    let parsedServers: StreamServer[] = [];
     try {
       parsedServers = JSON.parse(ch.servers || "[]");
     } catch {
